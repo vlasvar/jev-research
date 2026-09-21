@@ -87,6 +87,16 @@ Neither use case is hard-coded — the pipeline is generic.
 | `npm run build` | Build core, server, and web |
 | `npm start` | Run the production build |
 
+### One-shot Windows start
+
+From the repo root in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+```
+
+This pulls the latest code, installs dependencies, builds, and starts the app at http://127.0.0.1:8787.
+
 ## Repository layout
 
 ```text
