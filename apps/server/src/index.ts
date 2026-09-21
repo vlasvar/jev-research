@@ -83,10 +83,27 @@ app.get("/api/settings/status", async (c) => {
   }
 
   return c.json({
-    codex: codexStatus,
+    codex: {
+      authenticated: codexStatus.authenticated,
+      authModeSafe: codexStatus.authModeSafe,
+      requiresOpenaiAuth: codexStatus.requiresOpenaiAuth,
+      message: codexStatus.message,
+      // Privacy: never expose account email (or other personal identifiers) to the client.
+      account: codexStatus.account
+        ? {
+            type: codexStatus.account.type,
+            planType:
+              codexStatus.account.type === "chatgpt"
+                ? (codexStatus.account.planType ?? null)
+                : null,
+          }
+        : null,
+    },
     typesafe: {
       configured: Boolean(process.env.TYPESAFE_API_KEY),
-      ...typesafe,
+      ok: typesafe.ok,
+      message: typesafe.message,
+      model: typesafe.model,
     },
   });
 });
@@ -126,7 +143,21 @@ app.get("/api/settings/codex/login/:loginId/wait", async (c) => {
   try {
     const ok = await codex.waitForLogin(loginId);
     const status = await codex.getAuthStatus();
-    return c.json({ ok, status });
+    return c.json({
+      ok,
+      status: {
+        authenticated: status.authenticated,
+        authModeSafe: status.authModeSafe,
+        message: status.message,
+        account: status.account
+          ? {
+              type: status.account.type,
+              planType:
+                status.account.type === "chatgpt" ? (status.account.planType ?? null) : null,
+            }
+          : null,
+      },
+    });
   } catch (err) {
     return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
   }
