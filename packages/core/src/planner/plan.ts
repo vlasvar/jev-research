@@ -1,6 +1,10 @@
 import type { CodexClient } from "../codex/client.js";
 import { ResearchSpecSchema, type ResearchSpec } from "../types.js";
 
+/**
+ * Codex structured output requires every key in `properties` to also appear in
+ * `required`. Optional values are modeled as nullable / empty defaults.
+ */
 const PLANNER_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -8,6 +12,10 @@ const PLANNER_SCHEMA = {
     "query",
     "researchType",
     "objective",
+    "desiredResults",
+    "geography",
+    "freshness",
+    "sourcePreferences",
     "evaluationCriteria",
     "searchQueries",
   ],
@@ -15,9 +23,9 @@ const PLANNER_SCHEMA = {
     query: { type: "string" },
     researchType: { type: "string" },
     objective: { type: "string" },
-    desiredResults: { type: "integer" },
-    geography: { type: "string" },
-    freshness: { type: "string" },
+    desiredResults: { type: ["integer", "null"] },
+    geography: { type: ["string", "null"] },
+    freshness: { type: ["string", "null"] },
     sourcePreferences: { type: "array", items: { type: "string" } },
     evaluationCriteria: { type: "array", items: { type: "string" }, minItems: 1 },
     searchQueries: { type: "array", items: { type: "string" }, minItems: 1 },
@@ -35,9 +43,11 @@ ${query}
 
 Rules:
 - Infer sensible defaults. Do not ask clarifying questions.
-- If the user asks for N best/examples, set desiredResults accordingly.
+- If the user asks for N best/examples, set desiredResults to that integer; otherwise set desiredResults to null.
+- Set geography/freshness to null when not applicable (do not invent constraints).
+- sourcePreferences may be an empty array.
 - evaluationCriteria should make vague words like "best" concrete (quality signals, credibility, freshness, specificity).
-- searchQueries should be diverse enough to discover substantially more candidates than desiredResults.
+- searchQueries should be diverse enough to discover substantially more candidates than desiredResults when that is set.
 - researchType should be a short label such as "top_n_recommendations", "comparison", "evidence_review", or "signal_scan".
 - Return JSON only matching the schema.`;
 
@@ -50,13 +60,15 @@ Rules:
 }
 
 export function parseResearchSpec(raw: unknown, fallbackQuery?: string): ResearchSpec {
+  const cleaned = stripNullish(typeof raw === "object" && raw ? { ...raw } : {});
+
   const withDefaults = {
     query: fallbackQuery,
     researchType: "general_research",
     objective: fallbackQuery ? `Answer: ${fallbackQuery}` : "Answer the research question",
     evaluationCriteria: ["relevance", "credibility", "specificity of evidence"],
     searchQueries: fallbackQuery ? [fallbackQuery] : ["research"],
-    ...(typeof raw === "object" && raw ? raw : {}),
+    ...cleaned,
   };
 
   const parsed = ResearchSpecSchema.safeParse(withDefaults);
@@ -64,6 +76,19 @@ export function parseResearchSpec(raw: unknown, fallbackQuery?: string): Researc
     throw new Error(`Invalid ResearchSpec: ${parsed.error.message}`);
   }
   return parsed.data;
+}
+
+function stripNullish(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value) && value.length === 0 && key === "sourcePreferences") {
+      // omit empty optional list
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
 }
 
 export function describeSpec(spec: ResearchSpec): string {

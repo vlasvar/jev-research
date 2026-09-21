@@ -6,7 +6,7 @@ import { ResearchReportSchema } from "../types.js";
 const REPORT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["answer", "findings", "sources"],
+  required: ["answer", "findings", "evidenceSynthesis", "sources", "citations"],
   properties: {
     answer: { type: "string" },
     findings: {
@@ -14,13 +14,31 @@ const REPORT_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "summary", "sourceUrls"],
+        required: [
+          "title",
+          "summary",
+          "whySelected",
+          "characteristics",
+          "dimensionEntries",
+          "sourceUrls",
+        ],
         properties: {
           title: { type: "string" },
           summary: { type: "string" },
           whySelected: { type: "string" },
           characteristics: { type: "array", items: { type: "string" } },
-          dimensions: { type: "object", additionalProperties: { type: "string" } },
+          dimensionEntries: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["name", "value"],
+              properties: {
+                name: { type: "string" },
+                value: { type: "string" },
+              },
+            },
+          },
           sourceUrls: { type: "array", items: { type: "string" }, minItems: 1 },
         },
       },
@@ -31,7 +49,7 @@ const REPORT_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["title", "url"],
+        required: ["title", "url", "publisher"],
         properties: {
           title: { type: "string" },
           url: { type: "string" },
@@ -44,7 +62,7 @@ const REPORT_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["claim", "sourceUrl"],
+        required: ["claim", "sourceUrl", "support"],
         properties: {
           claim: { type: "string" },
           sourceUrl: { type: "string" },
@@ -137,7 +155,8 @@ export function parseResearchReport(
   raw: unknown,
   documents: SourceDocument[] = [],
 ): ResearchReport {
-  const parsed = ResearchReportSchema.safeParse(raw);
+  const normalized = normalizeReportPayload(raw);
+  const parsed = ResearchReportSchema.safeParse(normalized);
   if (!parsed.success) {
     throw new Error(`Invalid ResearchReport: ${parsed.error.message}`);
   }
@@ -159,6 +178,51 @@ export function parseResearchReport(
   }
 
   return report;
+}
+
+function normalizeReportPayload(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const obj = { ...(raw as Record<string, unknown>) };
+
+  if (Array.isArray(obj.findings)) {
+    obj.findings = obj.findings.map((finding) => {
+      if (!finding || typeof finding !== "object") return finding;
+      const f = { ...(finding as Record<string, unknown>) };
+      if (Array.isArray(f.dimensionEntries)) {
+        const dimensions: Record<string, string> = {};
+        for (const entry of f.dimensionEntries) {
+          if (!entry || typeof entry !== "object") continue;
+          const e = entry as { name?: unknown; value?: unknown };
+          if (typeof e.name === "string" && typeof e.value === "string" && e.name.trim()) {
+            dimensions[e.name] = e.value;
+          }
+        }
+        if (Object.keys(dimensions).length > 0) f.dimensions = dimensions;
+        delete f.dimensionEntries;
+      }
+      if (f.whySelected === null) delete f.whySelected;
+      if (Array.isArray(f.characteristics) && f.characteristics.length === 0) {
+        delete f.characteristics;
+      }
+      return f;
+    });
+  }
+
+  if (Array.isArray(obj.sources)) {
+    obj.sources = obj.sources.map((source) => {
+      if (!source || typeof source !== "object") return source;
+      const s = { ...(source as Record<string, unknown>) };
+      if (s.publisher === null || s.publisher === "") delete s.publisher;
+      return s;
+    });
+  }
+
+  if (obj.evidenceSynthesis === null || obj.evidenceSynthesis === "") {
+    delete obj.evidenceSynthesis;
+  }
+  if (!Array.isArray(obj.citations)) obj.citations = [];
+
+  return obj;
 }
 
 export function associateSourcesUsed(report: ResearchReport): string[] {
