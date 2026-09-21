@@ -62,9 +62,21 @@ export async function runResearchPipeline(
 
     await update("searching", "Searching");
     const discovered = [];
+    const searchErrors: string[] = [];
     for (const q of spec.searchQueries) {
-      const batch = await deps.search.search(q, { maxResults: 20 });
-      discovered.push(...batch);
+      try {
+        const batch = await deps.search.search(q, { maxResults: 20 });
+        discovered.push(...batch);
+      } catch (err) {
+        searchErrors.push(`${q}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (discovered.length === 0) {
+      throw new Error(
+        searchErrors.length > 0
+          ? `Discovery found no sources. ${searchErrors.join(" | ")}`
+          : "Discovery found no sources.",
+      );
     }
     const { unique: uniqueResults, removedCount: searchDupes } = dedupeSearchResults(discovered);
     run.trail.counters.discovered = uniqueResults.length;
@@ -75,7 +87,12 @@ export async function runResearchPipeline(
       result,
       selected: false,
     }));
-    await update("searching", `Discovered ${uniqueResults.length} unique candidates`);
+    await update(
+      "searching",
+      searchErrors.length > 0
+        ? `Discovered ${uniqueResults.length} unique candidates (some providers failed and were skipped)`
+        : `Discovered ${uniqueResults.length} unique candidates`,
+    );
 
     await update("screening", "Screening results");
     const triageResults: TriageResult[] = [];

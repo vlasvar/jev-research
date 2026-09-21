@@ -7,8 +7,8 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import {
   AppServerCodexClient,
-  DuckDuckGoSearchProvider,
   HttpContentFetcher,
+  ResilientSearchProvider,
   RunStore,
   TypeSafeJevClient,
   runResearchPipeline,
@@ -25,7 +25,7 @@ const WEB_DIST = resolve(process.cwd(), "../web/dist");
 
 const store = new RunStore(resolve(DATA_DIR, "runs.sqlite"));
 const codex = new AppServerCodexClient({ codexBin: process.env.CODEX_BIN });
-const search = new DuckDuckGoSearchProvider();
+const search = new ResilientSearchProvider();
 const fetcher = new HttpContentFetcher();
 
 const active = new Map<string, ResearchRun>();
