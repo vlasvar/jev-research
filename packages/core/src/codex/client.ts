@@ -59,17 +59,75 @@ function scrubEnv(base: NodeJS.ProcessEnv = process.env): Record<string, string>
   return env;
 }
 
-function resolveCodexBin(override?: string): string {
-  if (override || process.env.CODEX_BIN) return override || process.env.CODEX_BIN!;
+function resolveCodexLaunch(override?: string): {
+  command: string;
+  prefixArgs: string[];
+} {
+  const configured = override || process.env.CODEX_BIN;
+  if (configured) {
+    if (/\.(c|m)?js$/i.test(configured)) {
+      return { command: process.execPath, prefixArgs: [configured] };
+    }
+    return { command: configured, prefixArgs: [] };
+  }
+
+  // Prefer the native Codex binary from the platform package (works on Windows).
+  const native = resolveNativeCodexBinary();
+  if (native) {
+    return { command: native, prefixArgs: [] };
+  }
+
+  // Fall back to `node path/to/codex.js` — never spawn a .js file directly
+  // (Windows returns spawn EFTYPE for that).
   try {
     const require = createRequire(import.meta.url);
     const pkgJson = require.resolve("@openai/codex/package.json");
-    const bin = join(dirname(pkgJson), "bin", "codex.js");
-    if (existsSync(bin)) return bin;
+    const jsLauncher = join(dirname(pkgJson), "bin", "codex.js");
+    if (existsSync(jsLauncher)) {
+      return { command: process.execPath, prefixArgs: [jsLauncher] };
+    }
   } catch {
     /* fall through */
   }
-  return "codex";
+
+  return { command: "codex", prefixArgs: [] };
+}
+
+function resolveNativeCodexBinary(): string | null {
+  const platformPackageByTarget: Record<string, string> = {
+    "linux-x64": "@openai/codex-linux-x64",
+    "linux-arm64": "@openai/codex-linux-arm64",
+    "darwin-x64": "@openai/codex-darwin-x64",
+    "darwin-arm64": "@openai/codex-darwin-arm64",
+    "win32-x64": "@openai/codex-win32-x64",
+    "win32-arm64": "@openai/codex-win32-arm64",
+  };
+
+  const key = `${process.platform}-${process.arch}`;
+  const platformPackage = platformPackageByTarget[key];
+  if (!platformPackage) return null;
+
+  const targetTripleByKey: Record<string, string> = {
+    "linux-x64": "x86_64-unknown-linux-musl",
+    "linux-arm64": "aarch64-unknown-linux-musl",
+    "darwin-x64": "x86_64-apple-darwin",
+    "darwin-arm64": "aarch64-apple-darwin",
+    "win32-x64": "x86_64-pc-windows-msvc",
+    "win32-arm64": "aarch64-pc-windows-msvc",
+  };
+  const triple = targetTripleByKey[key];
+  if (!triple) return null;
+
+  try {
+    const require = createRequire(import.meta.url);
+    const packageJsonPath = require.resolve(`${platformPackage}/package.json`);
+    const vendorRoot = join(dirname(packageJsonPath), "vendor");
+    const exeName = process.platform === "win32" ? "codex.exe" : "codex";
+    const candidate = join(vendorRoot, triple, "bin", exeName);
+    return existsSync(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
 }
 
 type JsonRpcMessage = {
@@ -95,20 +153,43 @@ export class AppServerCodexClient extends EventEmitter implements CodexClient {
     { resolve: (ok: boolean) => void; reject: (err: Error) => void }
   >();
   private started = false;
-  private readonly codexBin: string;
+  private readonly launch: { command: string; prefixArgs: string[] };
 
   constructor(options?: { codexBin?: string }) {
     super();
-    this.codexBin = resolveCodexBin(options?.codexBin);
+    this.launch = resolveCodexLaunch(options?.codexBin);
   }
 
   async start(): Promise<void> {
     if (this.started) return;
 
     const env = scrubEnv();
-    this.proc = spawn(this.codexBin, ["app-server", "--listen", "stdio://"], {
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
+    const args = [...this.launch.prefixArgs, "app-server", "--listen", "stdio://"];
+    try {
+      this.proc = spawn(this.launch.command, args, {
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Failed to start Codex (${this.launch.command}): ${detail}. ` +
+          `Install @openai/codex and sign in with ChatGPT (device code). ` +
+          `On Windows, do not point CODEX_BIN at a .js file without node.`,
+      );
+    }
+
+    this.proc.on("error", (err) => {
+      const message =
+        err.message.includes("EFTYPE") || (err as NodeJS.ErrnoException).code === "EFTYPE"
+          ? `Failed to spawn Codex (EFTYPE). The app tried to run a non-executable file. ` +
+            `Update Jev Research and restart; it should launch Codex via node/native binary.`
+          : `Failed to spawn Codex: ${err.message}`;
+      for (const [, waiter] of this.pending) waiter.reject(new Error(message));
+      this.pending.clear();
+      this.started = false;
+      this.emit("spawn-error", err);
     });
 
     this.proc.on("exit", (code, signal) => {
