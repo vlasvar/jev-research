@@ -1,0 +1,28 @@
+{
+  "name": "jev-research",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first research app: Jev triage + Codex synthesis",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @jev-research/server",
+    "build": "npm run build -w @jev-research/core && npm run build -w @jev-research/server && npm run build -w @jev-research/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck -w @jev-research/core && npm run typecheck -w @jev-research/server && npm run typecheck -w @jev-research/web",
+    "start": "npm run start -w @jev-research/server"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
