@@ -168,9 +168,8 @@ export class AppServerCodexClient extends EventEmitter implements CodexClient {
     if (!authenticated) {
       message = "Not signed in to Codex. Sign in with ChatGPT to use subscription entitlements.";
     } else if (account.type === "chatgpt") {
-      message = `Signed in with ChatGPT${account.planType ? ` (${account.planType})` : ""}${
-        account.email ? ` as ${account.email}` : ""
-      }.`;
+      // Do not surface account email in UI/status strings (privacy).
+      message = `Signed in with ChatGPT${account.planType ? ` (${account.planType})` : ""}.`;
     } else if (account.type === "apiKey") {
       message =
         "Codex is authenticated with an API key. Jev Research requires ChatGPT subscription auth — API key billing is not supported for the MVP path.";
@@ -433,7 +432,8 @@ function normalizeAccount(raw: unknown): CodexAccount {
   if (obj.type === "chatgpt") {
     return {
       type: "chatgpt",
-      email: (obj.email as string | null | undefined) ?? null,
+      // Intentionally omit email — not needed for auth gating and should not leak to clients.
+      email: null,
       planType: (obj.planType as string | null | undefined) ?? null,
     };
   }
@@ -463,7 +463,7 @@ export function parseJsonLoose<T>(text: string, label: string): T {
 export class MockCodexClient implements CodexClient {
   public auth: CodexAuthStatus = {
     authenticated: true,
-    account: { type: "chatgpt", email: "tester@example.com", planType: "pro" },
+    account: { type: "chatgpt", email: null, planType: "pro" },
     requiresOpenaiAuth: true,
     authModeSafe: true,
     message: "Signed in with ChatGPT (mock).",
