@@ -35,7 +35,7 @@ USER QUERY
 ## Quick start
 
 ```bash
-git clone https://github.com/vlasvar/jev-research.git
+git clone <this-repository-url>
 cd jev-research
 cp .env.example .env
 # Edit .env and set TYPESAFE_API_KEY=...
@@ -100,12 +100,14 @@ LICENSE               MIT
 CONTRIBUTING.md       Contribution notes
 ```
 
-## Security
+## Privacy & security
 
-- Secrets stay server-side / local.
-- Never commit API keys.
+- This is a **local-first** app: research runs on your machine.
+- Secrets (`TYPESAFE_API_KEY`, Codex credentials) stay server-side / local. Never commit `.env`.
+- The app does not create user accounts, analytics profiles, or multi-tenant identity.
+- Settings may show whether *your* local Codex session is signed in; that status is not published to this repository or to third parties by the app.
 - Fetching does not bypass paywalls, CAPTCHAs, or authentication walls.
-- Research Trail is for inspectability — it does not log credentials.
+- Research Trail is for local inspectability — it must not log credentials.
 
 ## Contributing
 
