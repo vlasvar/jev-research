@@ -8,7 +8,7 @@ export interface ContentFetcher {
 
 const DEFAULT_HEADERS = {
   "user-agent":
-    "JevResearch/0.1 (+https://github.com/vlasvar/jev-research; local research; respectful fetch)",
+    "JevResearch/0.1 (local-first research; respectful fetch)",
   accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
 };
 
